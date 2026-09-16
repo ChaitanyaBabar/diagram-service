@@ -1,0 +1,15 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: bpme-xpdl-diagram-service
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+logging:
+  level:
+    com.tibco.xpd.n2.gat: DEBUG
+    root: INFO

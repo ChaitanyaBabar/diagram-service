@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.tibco.xpd.n2</groupId>
+    <artifactId>bpme-xpdl-diagram-service</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>BPME XPDL Diagram Service</name>
+    <description>Standalone REST service for XPDL to GAT diagram model transformation</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <emf.version>2.35.0</emf.version>
+        <emf.common.version>2.29.0</emf.common.version>
+        <emf.ecore.xmi.version>2.36.0</emf.ecore.xmi.version>
+        <gson.version>2.10.1</gson.version>
+    </properties>
+
+    <dependencies>
+        <!-- Spring Boot Web (REST) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- JSON serialization (used by GAT model for output) -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>${gson.version}</version>
+        </dependency>
+
+        <!-- EMF Core (standalone mode - no Eclipse Platform required) -->
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.common</artifactId>
+            <version>${emf.common.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.ecore</artifactId>
+            <version>${emf.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.ecore.xmi</artifactId>
+            <version>${emf.ecore.xmi.version}</version>
+        </dependency>
+
+        <!--
+            TIBCO XPDL2 EMF Model (local jar from S5x build).
+            This jar contains the XPDL 2.1 EMF model classes (com.tibco.xpd.xpdl2.*)
+            and the xpdExtension model classes (com.tibco.xpd.xpdExtension.*).
+            It requires only EMF Core/Common at runtime (no Eclipse Platform).
+
+            To obtain this jar:
+            1. Build the S5x codebase (or locate the PDE build output)
+            2. Copy the com.tibco.xpd.xpdl2 plugin jar to lib/com.tibco.xpd.xpdl2.jar
+        -->
+        <dependency>
+            <groupId>com.tibco.xpd</groupId>
+            <artifactId>xpdl2</artifactId>
+            <version>11.8.0.202604090831</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/lib/com.tibco.xpd.xpdl2.jar</systemPath>
+        </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
