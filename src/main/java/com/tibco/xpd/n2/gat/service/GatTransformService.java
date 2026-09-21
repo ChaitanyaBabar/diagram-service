@@ -90,6 +90,12 @@ public class GatTransformService
             {
                 GatProcessGenerator processGenerator = new GatProcessGenerator(process);
                 GatDefinitionsElement definitionsElement = processGenerator.generate();
+
+                // Include process identification so the client can distinguish processes
+                definitionsElement.put("processId", process.getId());
+                definitionsElement.put("processName",
+                        process.getName() != null ? process.getName() : process.getId());
+
                 results.add(definitionsElement);
             }
             catch (Exception e)

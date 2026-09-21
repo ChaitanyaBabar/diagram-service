@@ -25,67 +25,76 @@ public final class GatLineUtilities
     }
 
     /**
-     * Get a point along a polyline at a given proportional distance (0.0 to 1.0).
+     * Returns a point on a sequence of lines that is {@code percentPortion}
+     * distance along the line.
      *
-     * @param points   the polyline points
-     * @param portion  the proportional distance (0.0 = start, 1.0 = end)
+     * @param points         the polyline points
+     * @param percentPortion the percentage distance (0 to 100)
      * @return the interpolated point
      */
-    public static Point getLinePointFromPortion(PointList points, double portion)
+    public static Point getLinePointFromPortion(PointList points, double percentPortion)
     {
-        if (points == null || points.size() == 0)
+        if (percentPortion <= 0.0)
         {
-            return new Point(0, 0);
+            return points.getFirstPoint().getCopy();
         }
-        if (points.size() == 1)
+        else if (percentPortion >= 100.0)
         {
-            return points.getFirstPoint();
+            return points.getLastPoint().getCopy();
         }
 
-        double totalLength = getLineLength(points);
-        double targetLength = totalLength * portion;
+        /* Truncate to int to match S5x XPDLineUtilities behaviour */
+        int totalLength = (int) getLineLength(points);
 
-        return getLinePointFromOffset(points, (int) Math.round(targetLength));
+        int pixelsFromStart = (int) (totalLength * (percentPortion / 100));
+
+        return getLinePointFromOffset(points, pixelsFromStart);
     }
 
     /**
      * Get a point along a polyline at a given pixel offset from the start.
      *
-     * @param points the polyline points
-     * @param offset the pixel offset from the start
+     * @param points          the polyline points
+     * @param pixelsFromStart the pixel offset from the start
      * @return the interpolated point
      */
-    public static Point getLinePointFromOffset(PointList points, int offset)
+    public static Point getLinePointFromOffset(PointList points, int pixelsFromStart)
     {
-        if (points == null || points.size() == 0)
+        int totalLength = (int) getLineLength(points);
+
+        if (pixelsFromStart > totalLength)
         {
-            return new Point(0, 0);
-        }
-        if (points.size() == 1 || offset <= 0)
-        {
-            return points.getFirstPoint().getCopy();
+            return points.getLastPoint().getCopy();
         }
 
-        double remaining = offset;
-        for (int i = 0; i < points.size() - 1; i++)
-        {
-            Point p1 = points.getPoint(i);
-            Point p2 = points.getPoint(i + 1);
-            double segLength = getLineLength(p1, p2);
+        double[] lineLengths = new double[points.size() - 1];
 
-            if (remaining <= segLength)
+        for (int p = 0; p < points.size() - 1; p++)
+        {
+            lineLengths[p] = getLineLength(points.getPoint(p), points.getPoint(p + 1));
+        }
+
+        /* Find out how far down which line segment the pixel position lies */
+        int ll = 0;
+        for (ll = 0; ll < lineLengths.length; ll++)
+        {
+            if (pixelsFromStart <= lineLengths[ll])
             {
-                // Interpolate within this segment
-                double ratio = remaining / segLength;
-                int x = (int) (p1.preciseX() + ratio * (p2.preciseX() - p1.preciseX()));
-                int y = (int) (p1.preciseY() + ratio * (p2.preciseY() - p1.preciseY()));
-                return new Point(x, y);
+                break;
             }
-            remaining -= segLength;
+            pixelsFromStart -= lineLengths[ll];
         }
 
-        // Past the end, return last point
-        return points.getLastPoint().getCopy();
+        Point startLine = points.getPoint(ll);
+        Point endLine = points.getPoint(ll + 1);
+
+        double portion = pixelsFromStart / getLineLength(startLine, endLine);
+
+        double x = (endLine.preciseX() - startLine.preciseX()) * portion;
+        double y = (endLine.preciseY() - startLine.preciseY()) * portion;
+
+        return new Point((int) (startLine.preciseX() + Math.round(x)),
+                (int) (startLine.preciseY() + Math.round(y)));
     }
 
     /**

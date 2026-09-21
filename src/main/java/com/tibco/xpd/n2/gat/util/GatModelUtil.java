@@ -7,7 +7,9 @@ package com.tibco.xpd.n2.gat.util;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.ecore.EObject;
@@ -187,10 +189,16 @@ public final class GatModelUtil
 
     /**
      * Get a value from the "other" element FeatureMap (xpdExtension elements).
+     * <p>
+     * Uses {@code FeatureMap.list()} + isEmpty check to match S5x
+     * {@code Xpdl2ModelUtil.getOtherElement} behaviour. Using
+     * {@code FeatureMap.get(feature, false)} directly can return a non-null
+     * empty EList for multi-valued features, causing false positives.
+     * </p>
      *
      * @param eObject the EObject to query
      * @param feature the structural feature to look up
-     * @return the element value, or null
+     * @return the element value, or null if not present
      */
     public static Object getOtherElement(EObject eObject, EStructuralFeature feature)
     {
@@ -206,7 +214,12 @@ public final class GatModelUtil
             if (otherElems instanceof FeatureMap)
             {
                 FeatureMap featureMap = (FeatureMap) otherElems;
-                return featureMap.get(feature, false);
+                EList<?> eList = featureMap.list(feature);
+
+                if (eList != null && !eList.isEmpty())
+                {
+                    return eList.get(0);
+                }
             }
         }
         return null;
@@ -560,10 +573,15 @@ public final class GatModelUtil
     }
 
     /**
-     * Get all artifacts in a process.
+     * Get all artifacts belonging to a specific process.
+     *
+     * <p>Artifacts are stored at the Package level in XPDL, so we filter them by
+     * checking whether each artifact's {@code NodeGraphicsInfo.laneId} falls within
+     * this process's scope: the process ID itself (used by Group artifacts), any
+     * lane ID in the process's pools, or any ActivitySet ID in the process.</p>
      *
      * @param process the process
-     * @return list of all artifacts
+     * @return list of artifacts belonging to this process
      */
     public static List<Artifact> getAllArtifactsInProcess(Process process)
     {
@@ -571,20 +589,99 @@ public final class GatModelUtil
         {
             return Collections.emptyList();
         }
+
+        // Build the set of IDs that define this process's scope
+        Set<String> processScope = buildProcessScope(process);
+
+        // Filter: only include artifacts whose LaneId is in this process's scope
         List<Artifact> result = new ArrayList<>();
         EList<Artifact> artifacts = process.getPackage().getArtifacts();
         if (artifacts != null)
         {
-            result.addAll(artifacts);
+            for (Artifact art : artifacts)
+            {
+                NodeGraphicsInfo gi = getNodeGraphicsInfo(art);
+                if (gi != null)
+                {
+                    String laneId = gi.getLaneId();
+                    if (laneId != null && processScope.contains(laneId))
+                    {
+                        result.add(art);
+                    }
+                }
+            }
         }
         return result;
     }
 
     /**
-     * Get all associations in a process.
+     * Build the set of IDs that define a process's scope for artifact ownership.
+     * Includes the process ID, all lane IDs (including nested), and all ActivitySet IDs.
      *
      * @param process the process
-     * @return list of all associations
+     * @return set of IDs belonging to this process
+     */
+    private static Set<String> buildProcessScope(Process process)
+    {
+        Set<String> scope = new HashSet<>();
+        scope.add(process.getId());
+
+        // Add lane IDs from the process's pools (including nested lanes)
+        for (Pool pool : getProcessPools(process))
+        {
+            EList<Lane> lanes = pool.getLanes();
+            if (lanes != null)
+            {
+                for (Lane lane : lanes)
+                {
+                    collectLaneIds(lane, scope);
+                }
+            }
+        }
+
+        // Add activity set IDs (embedded subprocess containers)
+        EList<ActivitySet> activitySets = process.getActivitySets();
+        if (activitySets != null)
+        {
+            for (ActivitySet actSet : activitySets)
+            {
+                scope.add(actSet.getId());
+            }
+        }
+
+        return scope;
+    }
+
+    /**
+     * Recursively collect a lane's ID and all its nested lane IDs into the given set.
+     *
+     * @param lane the lane
+     * @param ids  the set to collect into
+     */
+    private static void collectLaneIds(Lane lane, Set<String> ids)
+    {
+        ids.add(lane.getId());
+        EList<Lane> nestedLanes = lane.getNestedLane();
+        if (nestedLanes != null)
+        {
+            for (Lane child : nestedLanes)
+            {
+                collectLaneIds(child, ids);
+            }
+        }
+    }
+
+    /**
+     * Get all associations belonging to a specific process.
+     *
+     * <p>Associations are stored at the Package level in XPDL, so we filter them by
+     * checking whether both the source and target element IDs exist within this
+     * process. An element belongs to the process if it is an activity (in the
+     * process or any of its ActivitySets) or an artifact that belongs to this
+     * process.</p>
+     *
+     * @param process the process
+     * @return list of associations belonging to this process
      */
     public static List<Association> getAllAssociationsInProc(Process process)
     {
@@ -592,11 +689,59 @@ public final class GatModelUtil
         {
             return Collections.emptyList();
         }
+
+        // Build a set of all element IDs in this process
+        Set<String> processElementIds = new HashSet<>();
+
+        // Add activity IDs from the process
+        EList<Activity> activities = process.getActivities();
+        if (activities != null)
+        {
+            for (Activity act : activities)
+            {
+                processElementIds.add(act.getId());
+            }
+        }
+
+        // Add activity IDs from ActivitySets (embedded subprocesses)
+        EList<ActivitySet> activitySets = process.getActivitySets();
+        if (activitySets != null)
+        {
+            for (ActivitySet actSet : activitySets)
+            {
+                EList<Activity> setActivities = actSet.getActivities();
+                if (setActivities != null)
+                {
+                    for (Activity act : setActivities)
+                    {
+                        processElementIds.add(act.getId());
+                    }
+                }
+            }
+        }
+
+        // Add artifact IDs that belong to this process (already filtered)
+        for (Artifact art : getAllArtifactsInProcess(process))
+        {
+            processElementIds.add(art.getId());
+        }
+
+        // Filter: only include associations where both source and target are in this process
         List<Association> result = new ArrayList<>();
         EList<Association> associations = process.getPackage().getAssociations();
         if (associations != null)
         {
-            result.addAll(associations);
+            for (Association assoc : associations)
+            {
+                String source = assoc.getSource();
+                String target = assoc.getTarget();
+                if (source != null && target != null
+                        && processElementIds.contains(source)
+                        && processElementIds.contains(target))
+                {
+                    result.add(assoc);
+                }
+            }
         }
         return result;
     }

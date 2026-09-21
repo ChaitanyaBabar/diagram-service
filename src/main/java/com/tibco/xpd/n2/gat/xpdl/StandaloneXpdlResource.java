@@ -5,6 +5,8 @@
 package com.tibco.xpd.n2.gat.xpdl;
 
 import org.eclipse.emf.common.util.URI;
+import org.eclipse.emf.ecore.xmi.XMLHelper;
+import org.eclipse.emf.ecore.xmi.XMLLoad;
 import org.eclipse.emf.ecore.xmi.impl.XMLResourceImpl;
 
 /**
@@ -27,8 +29,19 @@ import org.eclipse.emf.ecore.xmi.impl.XMLResourceImpl;
  * added as overrides later by overriding {@code createXMLHelper()},
  * {@code createXMLLoad()}, etc.</p>
  *
- * <p>For the initial POC, the default XMLResourceImpl behavior should be
- * sufficient for well-formed XPDL files produced by TIBCO BPM Studio.</p>
+ * <p>The XPDL Ecore model uses a custom "wrap" annotation pattern on
+ * structural features. For example, the {@code participants} feature has
+ * annotation {@code wrap=Participants}, meaning the XML serialization wraps
+ * {@code <Participant>} elements inside a {@code <Participants>} container.
+ * Standard EMF XML parsing doesn't understand this custom annotation and
+ * would throw {@code FeatureNotFoundException} when encountering wrapper
+ * elements like {@code <Participants>}.</p>
+ *
+ * <p>To handle this, this resource overrides the XML helper and XML load
+ * to use standalone ports of the S5x extension classes
+ * ({@link StandaloneHelperExtensions}, {@link StandaloneLoadExtensions},
+ * {@link StandaloneSAXParserExtensions}) which implement wrapper element
+ * skipping and lenient feature resolution.</p>
  */
 public class StandaloneXpdlResource extends XMLResourceImpl
 {
@@ -42,19 +55,35 @@ public class StandaloneXpdlResource extends XMLResourceImpl
         super(uri);
     }
 
-    /*
-     * NOTE: If default XMLResourceImpl parsing fails for certain XPDL files,
-     * the following overrides may be needed:
+    /**
+     * Creates a custom XML helper that handles XPDL-specific parsing concerns:
+     * <ul>
+     *   <li>Namespace prefix tracking for wrapper element detection</li>
+     *   <li>Lenient feature resolution with fallback for namespace mismatches</li>
+     *   <li>Subclass-wrap annotation support for abstract type hierarchies</li>
+     * </ul>
      *
-     * 1. createXMLHelper() - return a custom helper that handles:
-     *    - xpdExtension namespace prefix tracking
-     *    - Lenient parsing of unknown elements (log warning instead of error)
-     *
-     * 2. createXMLLoad() - return a custom load handler that handles:
-     *    - Wrapper elements that should be ignored during deserialization
-     *    - Custom SAX parser configuration via SAXParserExtensions
-     *
-     * These can be ported from HelperExtensions and LoadExtensions in the
-     * S5x codebase with Eclipse logging calls replaced by SLF4J.
+     * <p>Ported from S5x {@code HelperExtensions} with Eclipse logging
+     * replaced by SLF4J.</p>
      */
+    @Override
+    protected XMLHelper createXMLHelper()
+    {
+        return new StandaloneHelperExtensions(this);
+    }
+
+    /**
+     * Creates a custom XML load handler that wraps the SAX parser in a
+     * {@link StandaloneSAXParserExtensions} — this handler intercepts
+     * {@code startElement}/{@code endElement} calls to skip XPDL wrapper
+     * elements (like {@code <Participants>}, {@code <Activities>},
+     * {@code <Transitions>}, etc.) that have no direct model counterpart.
+     *
+     * <p>Ported from S5x {@code LoadExtensions}.</p>
+     */
+    @Override
+    protected XMLLoad createXMLLoad()
+    {
+        return new StandaloneLoadExtensions(createXMLHelper());
+    }
 }
